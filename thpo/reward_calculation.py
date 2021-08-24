@@ -33,7 +33,7 @@ def calculate_reward(args):
     best_reward_normed = np.clip(best_reward_normed, 0.0, 1.0)
     best_reward_normed = best_reward_normed.T
     # Calculate the trim mean rewards on every evaluation function:
-    #   1. Remove the highest and the lowest score 
+    #   1. Remove the highest and the lowest score
     #   2. Calculate the mean of the rest scores
     sort_repeat = np.sort(best_reward, axis=1)
     if sort_repeat.shape[1] >= 3:

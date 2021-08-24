@@ -17,7 +17,7 @@ command -v python3 >/dev/null 2>&1 || (echo err:python3 is not found, please ins
 
 # Test random search
 # Directory of searcher.py
-SEARCHER="example_random_searcher"
+SEARCHER=$1
 
 # Run searcher in all dataset
 python3 main.py -o $SEARCHER -d $DATASET -i $N_ITERATION -s $N_SUGGESTION -r $N_REPEAT

@@ -109,9 +109,9 @@ def namespace_to_dict(args_ns):
 def parse_args(parser, argv=None):
     args = parser.parse_args(argv)
     args = namespace_to_dict(args)
-    args[CmdArgs.all_iters] = args[CmdArgs.n_iteration]*args[CmdArgs.n_suggestions]
+    args[CmdArgs.all_iters] = args[CmdArgs.n_iteration] * args[CmdArgs.n_suggestions]
     if args[CmdArgs.result_root] is None:
-        result_dir = "output_" + time.strftime("%Y%m%d%H%M%S", time.localtime()) + "/"
+        result_dir = "output/run_" + time.strftime("%Y%m%d%H%M%S", time.localtime()) + "/"
         make_dir(result_dir)
         args[CmdArgs.result_root] = result_dir
     return args
