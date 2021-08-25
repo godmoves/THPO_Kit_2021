@@ -25,9 +25,9 @@ class TurboState(object):
                  length_min: float = 0.5 ** 7,
                  length_max: float = 1.6,
                  failure_counter: int = 0,
-                 failure_tolerance: int = float("nan"),  # Note: post-initialized
+                 failure_tolerance: int = float("nan"),
                  success_counter: int = 0,
-                 success_tolerance: int = 3,  # Note: 3 for original paper
+                 success_tolerance: int = 3,
                  best_value: float = -float("inf"),
                  restart_triggered: bool = False):
         self.dim = dim
@@ -47,7 +47,8 @@ class TurboState(object):
 
     def post_init(self):
         self.failure_tolerance = math.ceil(
-            max(4.0, self.dim) / self.batch_size
+            # batch_size is 5, so we allow 2 failures before we shrink the trust region.
+            max(10.0, self.dim) / self.batch_size
         )
 
     def __str__(self):
@@ -130,7 +131,7 @@ class Searcher(AbstractSearcher):
         self.dim = len(parameters_config)
         self.bounds = torch.tensor([lower_bounds, upper_bounds], **self.tkwargs)
         self.state = TurboState(dim=self.dim, batch_size=n_suggestion)
-        self.sobol = SobolEngine(self.dim, scramble=True)
+        self.sobol = SobolEngine(self.dim, scramble=False)
 
         # Hyper-parameters
         self.n_candidates = min(5000, max(2000, 200 * self.dim))
@@ -234,12 +235,5 @@ class Searcher(AbstractSearcher):
             for i, k in enumerate(self.parameters_config):
                 next_suggest[k] = x_next[n, i]
             next_suggestions.append(next_suggest)
-
-        # for __ in range(n_suggestions):
-        #     next_suggest = {
-        #         p_name: p_conf["coords"][random.randint(0, len(p_conf["coords"]) - 1)]
-        #         for p_name, p_conf in self.parameters_config.items()
-        #     }
-        #     next_suggestions.append(next_suggest)
 
         return next_suggestions
