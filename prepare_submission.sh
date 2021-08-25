@@ -9,7 +9,7 @@ echo $CODE_DIR
 
 # check if not implement searcher.py
 if [ ! -f "$CODE_DIR/searcher.py" ]; then
-    echo "Please implemente searcher.py in "$CODE_DIR
+    echo "Please implement searcher.py in "$CODE_DIR
     exit 0
 fi
 
@@ -39,3 +39,6 @@ unzip -l ./$UPLOAD_DIR.zip
 
 echo "For scoring, upload $UPLOAD_DIR.zip at address:"
 echo "https://algo.browser.qq.com/"
+
+# delete upload file, keep zip only
+rm -rf $UPLOAD_DIR
