@@ -117,7 +117,7 @@ class Searcher(AbstractSearcher):
             ys = [s[1] for s in suggestion_history]
             print("hist len: {}, best val: {}".format(len(ys), max(ys)))
 
-            new_value = suggestion_history[:-n_suggestions]
+            new_value = suggestion_history[-n_suggestions:]
             for x, y in new_value:
                 x = [x[name] for name in self.dim_names]
                 if np.isfinite(y):
