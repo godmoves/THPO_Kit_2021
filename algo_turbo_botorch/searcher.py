@@ -5,6 +5,7 @@ import torch
 from torch.quasirandom import SobolEngine
 from botorch.utils.transforms import unnormalize
 from botorch.utils.transforms import normalize
+from botorch.utils.transforms import standardize
 from botorch.fit import fit_gpytorch_model
 from botorch.generation import MaxPosteriorSampling
 from botorch.models import SingleTaskGP
@@ -121,13 +122,16 @@ class Searcher(AbstractSearcher):
         n_suggestion: number of suggestions to return
         """
         AbstractSearcher.__init__(self, parameters_config, n_iter, n_suggestion)
+
+        lower_bounds = [v["double_min_value"] for v in parameters_config.values()]
+        upper_bounds = [v["double_max_value"] for v in parameters_config.values()]
+
         self.tkwargs = {
             "dtype": torch.double,
             "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         }
-        lower_bounds = [v["double_min_value"] for v in parameters_config.values()]
-        upper_bounds = [v["double_max_value"] for v in parameters_config.values()]
         self.parameters_config = parameters_config
+        self.param_names = tuple([d["parameter_name"] for d in parameters_config.values()])
         self.dim = len(parameters_config)
         self.bounds = torch.tensor([lower_bounds, upper_bounds], **self.tkwargs)
         self.state = TurboState(dim=self.dim, batch_size=n_suggestion)
@@ -135,7 +139,7 @@ class Searcher(AbstractSearcher):
 
         # Hyper-parameters
         self.n_candidates = min(5000, max(2000, 200 * self.dim))
-        self.n_init = 20  # 4 batch * 5 points/batch
+        self.n_init = max(2 * self.dim + 1, 5 * n_suggestion)  # 4 batch * 5 points/batch
 
     def suggest(self, suggestion_history, n_suggestions=1):
         """ Suggest next n_suggestion parameters.
@@ -175,7 +179,7 @@ class Searcher(AbstractSearcher):
             x_next = self.sobol.draw(n_suggestions).to(**self.tkwargs)
             x_next = unnormalize(x_next, self.bounds).detach().numpy()
         else:
-            # Process x and y values
+            # Get x and y values
             x = [[v for v in d[0].values()] for d in suggestion_history]
             y = [d[1] for d in suggestion_history]
 
@@ -188,7 +192,7 @@ class Searcher(AbstractSearcher):
 
             # Standardize x, y
             x = normalize(x, self.bounds)
-            y = (y - y.mean()) / y.std()
+            y = standardize(y)
             assert x.min() >= 0 and x.max() <= 1.0 and torch.all(torch.isfinite(y))
 
             # Fit GP model
@@ -229,11 +233,6 @@ class Searcher(AbstractSearcher):
 
             print("x num: {}, best value: {}, TR len: {}".format(len(x), self.state.best_value, self.state.length))
 
-        next_suggestions = []
-        for n in range(n_suggestions):
-            next_suggest = {}
-            for i, k in enumerate(self.parameters_config):
-                next_suggest[k] = x_next[n, i]
-            next_suggestions.append(next_suggest)
+        next_suggestions = [dict(zip(self.param_names, x)) for x in x_next]
 
         return next_suggestions
