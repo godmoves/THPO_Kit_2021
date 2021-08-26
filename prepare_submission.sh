@@ -29,7 +29,7 @@ pip3 download -r $REQUIREMENTS_FILE -d ./$UPLOAD_DIR --python-version 36 --imple
 ! test -f $UPLOAD_DIR.zip
 
 # delete pycache
-rm -rf ./$UPLOAD_DIR/__pycache__
+find ./$UPLOAD_DIR -name "__pycache__" -exec rm -rf {} \;
 
 (cd $UPLOAD_DIR && zip -r ../$UPLOAD_DIR.zip ./*)
 
