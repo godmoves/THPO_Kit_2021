@@ -27,11 +27,6 @@ def copula_standardize(X):
     return X_ss
 
 
-def standardize(X):
-    X = (X - X.mean()) / X.std()
-    return X
-
-
 class Searcher(AbstractSearcher):
     searcher_name = "TurboSearcher"
 
@@ -174,7 +169,6 @@ class Searcher(AbstractSearcher):
             if len(self.turbo._X) > 0:
                 x = to_unit_cube(copy.deepcopy(self.turbo._X), self.lb, self.ub)
                 # fx = copula_standardize(copy.deepcopy(self.turbo._fX).ravel())
-                # fx = standardize(copy.deepcopy(self.turbo._fX).ravel())
                 fx = copy.deepcopy(self.turbo._fX).ravel()
                 x_cand, y_cand, _ = self.turbo._create_candidates(
                     x, fx, length=self.turbo.length, n_training_steps=100, hypers={}
