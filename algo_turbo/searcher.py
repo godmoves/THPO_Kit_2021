@@ -75,6 +75,7 @@ class Searcher(AbstractSearcher):
         lower_bounds = [v["double_min_value"] for v in parameters_config.values()]
         upper_bounds = [v["double_max_value"] for v in parameters_config.values()]
 
+        self.param_config = parameters_config
         self.param_names = tuple([d["parameter_name"] for d in parameters_config.values()])
         self.dim = len(parameters_config)
         self.lb, self.ub = np.array(lower_bounds), np.array(upper_bounds)
@@ -103,6 +104,14 @@ class Searcher(AbstractSearcher):
         self.turbo._fX = np.zeros((0, 1))
         x_init = latin_hypercube(self.turbo.n_init, self.dim)
         self.x_init = from_unit_cube(x_init, self.lb, self.ub)
+
+    def round_to_coords(self, x):
+        n, d = x.shape
+        for i, v in enumerate(self.param_config.values()):
+            coords = np.array(v["coords"]).reshape(1, -1)
+            index = np.abs(x[:, i, None] - coords).argmin(axis=1)
+            x[:, i] = np.array([coords[0, idx] for idx in index])
+        return x
 
     def suggest(self, suggestion_history, n_suggestions=1):
         """ Suggest next n_suggestion parameters.
@@ -180,6 +189,7 @@ class Searcher(AbstractSearcher):
                 x = np.random.random((n_adapt, self.dim))
                 x_next[-n_adapt:] = from_unit_cube(x, self.lb, self.ub)
 
+        x_next = self.round_to_coords(x_next)
         next_suggestions = [dict(zip(self.param_names, x)) for x in x_next]
 
         return next_suggestions
