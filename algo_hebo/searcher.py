@@ -159,7 +159,8 @@ class Searcher(AbstractSearcher):
             iter  = max(1, self.X.shape[0] // n_suggestions)
             upsi  = 0.5
             delta = 0.01
-            kappa = np.sqrt(upsi * 2 * np.log(iter **  (2.0 + self.X.shape[1] / 2.0) * 3 * np.pi**2 / (3 * delta)))
+            # kappa = np.sqrt(upsi * 2 * np.log(iter **  (2.0 + self.X.shape[1] / 2.0) * 3 * np.pi**2 / (3 * delta)))
+            kappa = np.sqrt(upsi * 2 * ((2.0 + self.X.shape[1] / 2.0) * np.log(iter) + np.log(3 * np.pi**2 / (3 * delta))))
 
             acq = MACE(model, py_best, kappa = kappa) # LCB < py_best
             mu  = Mean(model)
