@@ -3,3 +3,4 @@ cma==2.7.0
 pymoo==0.4.1
 paramz==0.9.5
 GPy==1.9.9
+scipy==1.4.1
