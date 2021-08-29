@@ -88,7 +88,7 @@ class GPyGP(BaseModel):
 
         self.gp.optimize_restarts(max_iters = self.num_epochs, messages = self.verbose, num_restarts = 10)
         print(self.gp.likelihood.variance, flush = True)
-        print(self.gp.likelihood.variance[0], flush = True)
+        # print(self.gp.likelihood.variance[0], flush = True)
         return self
 
     def predict(self, Xc : FloatTensor, Xe : LongTensor) -> (FloatTensor, FloatTensor):
