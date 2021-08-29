@@ -1,7 +1,9 @@
 import json
+import math
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 
 class Plot(object):
@@ -20,7 +22,8 @@ class Plot(object):
         for i in range(r):
             for j in range(c):
                 p = {dims[0]: X[i, j], dims[1]: Y[i, j]}
-                Z[i, j] = float(da.loc[p].values)
+                # Log value to make the diference clear
+                Z[i, j] = -math.log(-float(da.loc[p].values))
 
         self.dims = dims
         self.X = X
@@ -31,9 +34,24 @@ class Plot(object):
         self.opt_x = x[index % len(x)]
         self.opt_y = y[index // len(x)]
 
-    def show(self, suggestion_history=None, x_next=None, trust_region=None):
-        plt.figure(figsize=(14, 12))
-        plt.contourf(self.X, self.Y, self.Z)
+    def show(self,
+             suggestion_history=None,
+             x_next=None,
+             trust_region=None,
+             acq=None,
+             rec=None):
+        # Calculate acq value
+        r, c = self.X.shape
+        Xc = []
+        for i in range(r):
+            for j in range(c):
+                Xc.append([self.X[i, j], self.Y[i, j]])
+        Xc = torch.FloatTensor(Xc)
+        acq_val = -acq.eval(Xc, None).numpy().reshape(r, c, 3)
+        rec = rec.to_numpy()
+        print("Show {} MSGA2 recommendations.".format(len(rec)))
+        rec_x = [r[0] for r in rec]
+        rec_y = [r[1] for r in rec]
 
         x_all = [list(s[0].values()) for s in suggestion_history]
         y_all = [s[1] for s in suggestion_history]
@@ -42,34 +60,60 @@ class Plot(object):
         x_next = [list(x.values()) for x in x_next]
         points = {"red": x_next, "blue": x_all}
 
-        # Current best point
-        plt.scatter([x_best[0]], [x_best[1]], marker="o", c="orange", s=200)
-        # Optimal point
-        plt.scatter([self.opt_x], [self.opt_y], marker="*", c="purple", s=300)
-        if points:
-            for color, ps in points.items():
-                px = [p[0] for p in ps]
-                py = [p[1] for p in ps]
-                plt.scatter(px, py, c=color)
+        # Plot all figures
+        f, axs = plt.subplots(2, 2, figsize=(14, 13))
+        ax1, ax2, ax3, ax4 = axs[0, 0], axs[0, 1], axs[1, 0], axs[1, 1]
 
+        # EI
+        ei = acq_val[:, :, 0]
+        ax2.contourf(self.X, self.Y, ei, cmap="Blues")
+        ax2.set_title("EI")
+        ax2.scatter(rec_x, rec_y, c="red", s=50)
+        print("EI, min {} max {} mean {}".format(ei.min(), ei.max(), ei.mean()))
+
+        # PI
+        pi_sign = np.sign(acq_val[:, :, 1])
+        pi_log = np.log(np.abs(acq_val[:, :, 1]))
+        pi = pi_sign * pi_log
+        ax3.contourf(self.X, self.Y, pi, cmap="Blues")
+        ax3.set_title("PI")
+        ax3.scatter(rec_x, rec_y, c="red", s=50)
+        print("PI, min {} max {} mean {}".format(np.nanmin(pi), np.nanmax(pi), np.nanmean(pi)))
+
+        # UCB
+        ucb_sign = np.sign(acq_val[:, :, 2])
+        ucb_log = np.log(np.abs(acq_val[:, :, 2]))
+        ucb = ucb_sign * ucb_log
+        ax4.contourf(self.X, self.Y, ucb, cmap="Blues")
+        ax4.set_title("UCB")
+        ax4.scatter(rec_x, rec_y, c="red", s=50)
+        print("UCB, min {} max {} mean {}".format(np.nanmin(ucb), np.nanmax(ucb), np.nanmean(ucb)))
+
+        ax1.contourf(self.X, self.Y, self.Z, cmap="Blues")
+
+        # Current best point
+        ax1.scatter([x_best[0]], [x_best[1]], marker="o", c="orange", s=200)
+        # Optimal point
+        ax1.scatter([self.opt_x], [self.opt_y], marker="*", c="purple", s=200)
+        for color, ps in points.items():
+            px = [p[0] for p in ps]
+            py = [p[1] for p in ps]
+            ax1.scatter(px, py, c=color)
+
+        # Trust region
         if trust_region:
             lb, ub = trust_region
             x = np.array([lb[0], lb[0], ub[0], ub[0], lb[0]])
             y = np.array([lb[1], ub[1], ub[1], lb[1], lb[1]])
-            # x = (np.max(self.X) - np.min(self.X)) * x + np.min(self.X)
-            # y = (np.max(self.Y) - np.min(self.Y)) * y + np.min(self.Y)
-            plt.plot(x, y, c="red")
+            ax1.plot(x, y, c="red")
 
-        plt.xlabel(self.dims[0])
-        plt.ylabel(self.dims[1])
-        plt.xlim(-0.2, 5.2)
-        plt.ylim(-0.2, 5.2)
-        plt.title("best val: {}".format(y_best), fontsize=20)
-        plt.colorbar()
+        ax1.set_xlabel(self.dims[0])
+        ax1.set_ylabel(self.dims[1])
+        ax1.set_xlim(-0.2, 5.2)
+        ax1.set_ylim(-0.2, 5.2)
+        ax1.set_title("Log Z, current val: {}".format(y_best), fontsize=15)
+        # ax1.colorbar()
         plt.show()
-        # plt.show(block=False)
-        # plt.pause(3)
-        # plt.close()
 
 
 if __name__ == '__main__':

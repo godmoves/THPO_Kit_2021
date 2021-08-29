@@ -264,7 +264,8 @@ class Searcher(AbstractSearcher):
             mu = Mean(model)
             sig = Sigma(model, linear_a=-1.)
             opt = EvolutionOpt(self.space, acq, pop=100, iters=100, verbose=True)
-            rec = opt.optimize(initial_suggest=best_x, trust_region=(tr_lb, tr_ub)).drop_duplicates()
+            rec = opt.optimize(initial_suggest=best_x, trust_region=None).drop_duplicates()
+            # rec = opt.optimize(initial_suggest=best_x, trust_region=(tr_lb, tr_ub)).drop_duplicates()
             rec = rec[self.check_unique(rec)]
 
             cnt = 0
@@ -279,7 +280,11 @@ class Searcher(AbstractSearcher):
                 rand_rec = self.quasi_sample(n_suggestions - rec.shape[0])
                 rec = rec.append(rand_rec, ignore_index=True)
 
-            select_id = np.random.choice(rec.shape[0], n_suggestions, replace=False).tolist()
+            dist = rec.subtract(best_x.iloc[0]) ** 2 / self.space.num_paras
+            dist = np.sqrt(dist.to_numpy().sum(axis=1))
+            dist = dist / dist.sum()
+            # Sample according to the distance form the current best points.
+            select_id = np.random.choice(rec.shape[0], n_suggestions, replace=False, p=dist).tolist()
             x_guess = []
             with torch.no_grad():
                 py_all = mu(*self.space.transform(rec)).squeeze().numpy()
@@ -311,6 +316,8 @@ class Searcher(AbstractSearcher):
         #         suggestion_history=suggestion_history,
         #         x_next=x_guess,
         #         trust_region=(tr_lb, tr_ub),
+        #         acq=acq,
+        #         rec=rec,
         #     )
 
         return x_guess
