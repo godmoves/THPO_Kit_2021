@@ -87,10 +87,10 @@ class Searcher(AbstractSearcher):
 
         self.config = self._read_config()
         print('config:', self.config)
-        # optimizer_seed = self.config.get('optimizer_seed')
-        # fix_optimizer_seed(optimizer_seed)
-        # self.sampler_seed = self.config.get('sampler_seed')
-        # sampler.fix_sampler_seed(self.sampler_seed)
+        optimizer_seed = self.config.get('optimizer_seed')
+        fix_optimizer_seed(optimizer_seed)
+        self.sampler_seed = self.config.get('sampler_seed')
+        sampler.fix_sampler_seed(self.sampler_seed)
 
         self.is_init_batch = False
         self.init_batches = []
