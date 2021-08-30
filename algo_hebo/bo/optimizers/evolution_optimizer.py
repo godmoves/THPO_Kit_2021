@@ -76,7 +76,10 @@ class EvolutionOpt:
             init_pop = pd.concat(
                 [initial_suggest, init_pop], axis=0).head(self.pop)
         x, xe = self.space.transform(init_pop)
-        return np.hstack([x.numpy(), xe.numpy().astype(float)])
+        # keep init pop value
+        init_pop = np.hstack([x.numpy(), xe.numpy().astype(float)])
+        self.init_pop = init_pop
+        return init_pop
 
     def get_mutation(self):
         mask = []

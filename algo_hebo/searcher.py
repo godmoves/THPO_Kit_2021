@@ -38,7 +38,7 @@ class TurboState(object):
                  failure_counter: int = 0,
                  failure_tolerance: int = float("nan"),
                  success_counter: int = 0,
-                 success_tolerance: int = 4,
+                 success_tolerance: int = 5,
                  best_value: float = float("inf"),
                  restart_triggered: bool = False):
         self.dim = dim
@@ -305,20 +305,22 @@ class Searcher(AbstractSearcher):
             for idx in select_id:
                 x_guess.append(rec.iloc[idx].to_dict())
 
+        # Round value to coords.
         # x_guess = [list(x.values()) for x in x_guess]
         # x_guess = np.array(x_guess)
         # x_guess = self.round_to_coords(x_guess)
         # x_guess = [dict(zip(self.param_names, x)) for x in x_guess]
 
-        # if len(suggestion_history) >= 4 * n_suggestions:
-        #     print("Trues region", tr_lb, tr_ub)
-        #     self.plot.show(
-        #         suggestion_history=suggestion_history,
-        #         x_next=x_guess,
-        #         trust_region=(tr_lb, tr_ub),
-        #         acq=acq,
-        #         rec=rec,
-        #     )
+        if len(suggestion_history) >= 4 * n_suggestions:
+            print("Trues region", tr_lb, tr_ub)
+            self.plot.show(
+                suggestion_history=suggestion_history,
+                x_next=x_guess,
+                trust_region=(tr_lb, tr_ub),
+                acq=acq,
+                rec=rec,
+                init_pop=opt.init_pop,
+            )
 
         return x_guess
 
