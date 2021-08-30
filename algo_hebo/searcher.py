@@ -20,6 +20,9 @@ from bo.design_space.design_space import DesignSpace
 from bo.models.model_factory import get_model
 from bo.acquisitions.acq import LCB, Mean, Sigma, MOMeanSigmaLCB, MACE
 from bo.optimizers.evolution_optimizer import EvolutionOpt
+from sklearn.svm import SVC
+from sklearn.cluster import KMeans
+
 
 # Need to import the searcher abstract class, the following are essential
 from thpo.abstract_searcher import AbstractSearcher
@@ -28,67 +31,72 @@ from plot import Plot
 torch.set_num_threads(min(1, torch.get_num_threads()))
 
 
-class TurboState(object):
-    def __init__(self,
-                 dim: int,
-                 batch_size: int,
-                 length: float = 0.8,
-                 length_min: float = 0.5 ** 7,
-                 length_max: float = 1.6,
-                 failure_counter: int = 0,
-                 failure_tolerance: int = float("nan"),
-                 success_counter: int = 0,
-                 success_tolerance: int = 5,
-                 best_value: float = float("inf"),
-                 restart_triggered: bool = False):
-        self.dim = dim
-        self.batch_size = batch_size
-        self.length = length
-        self.length_min = length_min
-        self.length_max = length_max
-        self.failure_counter = failure_counter
-        self.failure_tolerance = failure_tolerance
-        self.success_counter = success_counter
-        self.success_tolerance = success_tolerance
-        self.best_value = best_value
-        self.restart_triggered = restart_triggered
+class SpacePartition(object):
+    def get_split_model(self, X, kmeans_labels):
+        args = {
+            'kernel': 'poly',
+            'gamma': 'scale',
+            'C': 745.3227447730735,
+            'max_iter': 10**7,
+        }
+        split_model = SVC(**args)
 
-        if math.isnan(self.failure_tolerance):
-            self.post_init()
+        split_model.fit(X, kmeans_labels)
+        split_model_predictions = split_model.predict(X)
+        split_model_matches = np.sum(split_model_predictions == kmeans_labels)
+        split_model_mismatches = np.sum(split_model_predictions != kmeans_labels)
+        print('Labels for the split model:', kmeans_labels)
+        print('Predictions of the split model:', split_model_predictions)
+        print(f'Split model matches {split_model_matches} and mismatches {split_model_mismatches}')
+        return split_model
 
-    def post_init(self):
-        self.failure_tolerance = math.ceil(
-            # batch_size is 5, so we allow 2 failures before we shrink the trust region.
-            max(10.0, self.dim) / self.batch_size
-        )
-
-    def __str__(self):
-        return "Turbo state: dim: {}, batch_size: {}, length: {}, succ_cnt: {}, " \
-               "fail_cnt: {}, best_value: {}, restart_triggered: {}".format(
-                   self.dim, self.batch_size, self.length, self.success_counter,
-                   self.failure_counter, self.best_value, self.restart_triggered
-               )
-
-    def update_state(self, y_all):
-        y_all = y_all.copy().ravel()
-        if min(y_all) < self.best_value - 1e-3 * math.fabs(self.best_value):
-            self.success_counter += 1
-            self.failure_counter = 0
+    def find_split(self, X, y):
+        max_margin = None
+        max_margin_labels = None
+        kmeans_resplits = 10
+        for _ in range(kmeans_resplits):
+            kmeans = KMeans(n_clusters=2).fit(y)
+            kmeans_labels = kmeans.labels_
+            if np.count_nonzero(kmeans_labels == 1) > 0 and np.count_nonzero(kmeans_labels == 0) > 0:
+                if np.mean(y[kmeans_labels == 1]) < np.mean(y[kmeans_labels == 0]):
+                    # Reverse labels if the entries with 1s have a lower mean value,
+                    # since 1s go to the left (larger) branch.
+                    kmeans_labels = 1 - kmeans_labels
+                margin = -(np.mean(y[kmeans_labels == 1]) - np.mean(y[kmeans_labels == 0]))
+                print('MARGIN is', margin, np.count_nonzero(kmeans_labels == 1),
+                      np.count_nonzero(kmeans_labels == 0))
+                if max_margin is None or margin > max_margin:
+                    max_margin = margin
+                    max_margin_labels = kmeans_labels
+        print('MAX MARGIN is', max_margin)
+        if max_margin_labels is None:
+            return None
         else:
-            self.success_counter = 0
-            self.failure_counter += 1
+            return self._get_split_model(X, max_margin_labels)
 
-        if self.success_counter == self.success_tolerance:
-            self.length = min(2.0 * self.length, self.length_max)
-            self.success_counter = 0
-        elif self.failure_counter == self.failure_tolerance:
-            self.length /= 2.0
-            self.failure_counter = 0
+    def build_tree(self, X, y, depth=0):
+        print('len(X) in self.build_tree is', len(X))
+        if depth == self.config['max_tree_depth']:
+            return []
+        split = self.find_split(X, y)
+        if split is None:
+            return []
+        in_region_points = split.predict(X)
+        left_subtree_size = np.count_nonzero(in_region_points == 1)
+        right_subtree_size = np.count_nonzero(in_region_points == 0)
+        print(f'{len(X)} points would be split into {left_subtree_size}/{right_subtree_size}.')
+        if left_subtree_size < self.n_init:
+            return []
+        idx = (in_region_points == 1)
+        splits = self.build_tree(X[idx], y[idx], depth + 1)
+        return [split] + splits
 
-        self.best_value = min(self.best_value, min(y_all))
-        if self.length < self.length_min:
-            self.restart_triggered = True
-        return self
+    def get_in_node_region(self, points, splits):
+        in_region = np.ones(len(points))
+        for split in splits:
+            split_in_region = split.predict(points)
+            in_region *= split_in_region
+        return in_region
 
 
 class Searcher(AbstractSearcher):
@@ -104,8 +112,6 @@ class Searcher(AbstractSearcher):
         self.model_name = model_name
         self.sobol = SobolEngine(self.space.num_paras, scramble=False)
         self.plot = Plot()
-        self.state = TurboState(dim=self.space.num_paras,
-                                batch_size=n_suggestion)
 
     def filter(self, y: torch.Tensor) -> [bool]:
         if not (np.all(y.numpy() > 0) and (y.max() / y.min() > 20)):
@@ -171,13 +177,31 @@ class Searcher(AbstractSearcher):
             cfg['num_uniqs'] = [len(self.space.paras[name].categories) for name in self.space.enum_names]
         return cfg
 
-    def round_to_coords(self, x):
+    def round_to_coords(self, x: pd.DataFrame):
+        x = x.copy()
         n, d = x.shape
         for i, v in enumerate(self.param_config.values()):
             coords = np.array(v["coords"]).reshape(1, -1)
-            index = np.abs(x[:, i, None] - coords).argmin(axis=1)
-            x[:, i] = np.array([coords[0, idx] for idx in index])
+            index = np.abs(x.iloc[:, [i]].to_numpy() - coords).argmin(axis=1)
+            x.iloc[:, i] = np.array([coords[0, idx] for idx in index])
+        # print(x)
         return x
+
+    def normalize(self, x: np.ndarray):
+        ub = self.space.opt_ub.numpy().squeeze()
+        lb = self.space.opt_lb.numpy().squeeze()
+        return (x - lb) / (ub - lb)
+
+    def cal_rec_dist(self, rec: pd.DataFrame, best_x: pd.DataFrame):
+        rec = rec.to_numpy()
+        best_x = best_x.to_numpy()[0]
+
+        rec = self.normalize(rec)
+        best_x = self.normalize(best_x)
+        dist2 = (rec - best_x) ** 2 / self.space.num_paras
+        dist2 = dist2.sum(axis=1)
+        dist2 = dist2 / dist2.sum()
+        return dist2
 
     def suggest(self, suggestion_history, n_suggestions=1):
         if suggestion_history:
@@ -196,13 +220,11 @@ class Searcher(AbstractSearcher):
 
         if self.X.shape[0] < 4 * n_suggestions:
             df_suggest = self.quasi_sample(n_suggestions)
+            df_suggest = self.round_to_coords(df_suggest)
             x_guess = []
             for i, row in df_suggest.iterrows():
                 x_guess.append(row.to_dict())
         else:
-            # Update turbo state
-            self.state.update_state(self.y)
-
             X, Xe = self.space.transform(self.X)
             try:
                 if self.y.min() <= 0:
@@ -239,19 +261,6 @@ class Searcher(AbstractSearcher):
             py_best = py_best.detach().numpy().squeeze()
             ps_best = ps2_best.sqrt().detach().numpy().squeeze()
 
-            # Calculate trust region of GP model
-            opt_lb = self.space.opt_lb.numpy().squeeze()
-            opt_ub = self.space.opt_ub.numpy().squeeze()
-            x_center = best_x.to_numpy().squeeze()
-            x_center = (x_center - opt_lb) / (opt_ub - opt_lb)
-            weights = model.gp.kernel.parts[1].lengthscale.values
-            weights = weights / weights.mean()
-            weights = weights / np.prod(np.power(weights, 1.0 / len(weights)))
-            tr_lb = np.clip(x_center - weights * self.state.length / 2.0, 0.0, 1.0)
-            tr_ub = np.clip(x_center + weights * self.state.length / 2.0, 0.0, 1.0)
-            tr_lb = tr_lb * (opt_ub - opt_lb) + opt_lb
-            tr_ub = tr_ub * (opt_ub - opt_lb) + opt_lb
-
             # XXX: minimize (mu, -1 * sigma)
             #      s.t.     LCB < best_y
             iters = max(1, self.X.shape[0] // n_suggestions)
@@ -265,7 +274,7 @@ class Searcher(AbstractSearcher):
             sig = Sigma(model, linear_a=-1.)
             opt = EvolutionOpt(self.space, acq, pop=100, iters=100, verbose=True)
             rec = opt.optimize(initial_suggest=best_x, trust_region=None).drop_duplicates()
-            # rec = opt.optimize(initial_suggest=best_x, trust_region=(tr_lb, tr_ub)).drop_duplicates()
+            rec = self.round_to_coords(rec)
             rec = rec[self.check_unique(rec)]
 
             cnt = 0
@@ -280,11 +289,10 @@ class Searcher(AbstractSearcher):
                 rand_rec = self.quasi_sample(n_suggestions - rec.shape[0])
                 rec = rec.append(rand_rec, ignore_index=True)
 
-            dist = rec.subtract(best_x.iloc[0]) ** 2 / self.space.num_paras
-            dist = np.sqrt(dist.to_numpy().sum(axis=1))
-            dist = dist / dist.sum()
+            dist2 = self.cal_rec_dist(rec, best_x)
+            # print("Rec dist2", dist2)
             # Sample according to the distance form the current best points.
-            select_id = np.random.choice(rec.shape[0], n_suggestions, replace=False, p=dist).tolist()
+            select_id = np.random.choice(rec.shape[0], n_suggestions, replace=False, p=dist2).tolist()
             x_guess = []
             with torch.no_grad():
                 py_all = mu(*self.space.transform(rec)).squeeze().numpy()
@@ -301,22 +309,14 @@ class Searcher(AbstractSearcher):
                 rec_selected['ps'] = ps2.sqrt().squeeze().numpy()
                 print(rec_selected)
             print('Best y is %g %g %g %g' % (self.y.min(), best_y, py_best, ps_best), flush=True)
-            print(self.state)
             for idx in select_id:
                 x_guess.append(rec.iloc[idx].to_dict())
 
-        # Round value to coords.
-        # x_guess = [list(x.values()) for x in x_guess]
-        # x_guess = np.array(x_guess)
-        # x_guess = self.round_to_coords(x_guess)
-        # x_guess = [dict(zip(self.param_names, x)) for x in x_guess]
-
         if len(suggestion_history) >= 4 * n_suggestions:
-            print("Trues region", tr_lb, tr_ub)
             self.plot.show(
                 suggestion_history=suggestion_history,
                 x_next=x_guess,
-                trust_region=(tr_lb, tr_ub),
+                # trust_region=(tr_lb, tr_ub),
                 acq=acq,
                 rec=rec,
                 init_pop=opt.init_pop,
