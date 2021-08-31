@@ -65,7 +65,7 @@ class Plot(object):
         rec_x, rec_y = rec[:, 0], rec[:, 1]
         pf = self.cal_pareto_front(acq_val)
         pf_x, pf_y = self.X.ravel()[pf], self.Y.ravel()[pf]
-        init_x, init_y = init_pop[:, 0], init_pop[:, 1]
+        # init_x, init_y = init_pop[:, 0], init_pop[:, 1]
 
         x_all = [list(s[0].values()) for s in suggestion_history]
         y_all = [s[1] for s in suggestion_history]
@@ -75,16 +75,18 @@ class Plot(object):
         points = {"red": x_next, "blue": x_all}
 
         # Plot all figures
-        f, axs = plt.subplots(2, 2, figsize=(9, 9))
+        f, axs = plt.subplots(2, 2, figsize=(13, 13))
         ax1, ax2, ax3, ax4 = axs[0, 0], axs[0, 1], axs[1, 0], axs[1, 1]
 
         # EI
         ei = acq_val[:, 0].reshape(r, c)
         ax2.contourf(self.X, self.Y, ei, cmap="Blues")
         ax2.set_title("EI")
-        ax2.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
+        # ax2.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
         ax2.scatter(pf_x, pf_y, c="yellow", s=10)
         ax2.scatter(rec_x, rec_y, c="red", s=10)
+        ax2.set_xlim(-0.1, 5.1)
+        ax2.set_ylim(-0.1, 5.1)
         print("EI, min {} max {} mean {}".format(ei.min(), ei.max(), ei.mean()))
 
         # PI
@@ -93,9 +95,11 @@ class Plot(object):
         pi = (pi_sign * pi_log).reshape(r, c)
         ax3.contourf(self.X, self.Y, pi, cmap="Blues")
         ax3.set_title("PI")
-        ax3.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
+        # ax3.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
         ax3.scatter(pf_x, pf_y, c="yellow", s=10)
         ax3.scatter(rec_x, rec_y, c="red", s=10)
+        ax3.set_xlim(-0.1, 5.1)
+        ax3.set_ylim(-0.1, 5.1)
         print("PI, min {} max {} mean {}".format(np.nanmin(pi), np.nanmax(pi), np.nanmean(pi)))
 
         # UCB
@@ -104,9 +108,11 @@ class Plot(object):
         ucb = (ucb_sign * ucb_log).reshape(r, c)
         ax4.contourf(self.X, self.Y, ucb, cmap="Blues")
         ax4.set_title("UCB")
-        ax4.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
+        # ax4.scatter(init_x, init_y, c="grey", s=10, alpha=0.5)
         ax4.scatter(pf_x, pf_y, c="yellow", s=10)
         ax4.scatter(rec_x, rec_y, c="red", s=10)
+        ax4.set_xlim(-0.1, 5.1)
+        ax4.set_ylim(-0.1, 5.1)
         print("UCB, min {} max {} mean {}".format(np.nanmin(ucb), np.nanmax(ucb), np.nanmean(ucb)))
 
         ax1.contourf(self.X, self.Y, self.Z, cmap="Blues")
@@ -129,14 +135,14 @@ class Plot(object):
 
         ax1.set_xlabel(self.dims[0])
         ax1.set_ylabel(self.dims[1])
-        ax1.set_xlim(-0.2, 5.2)
-        ax1.set_ylim(-0.2, 5.2)
+        ax1.set_xlim(-0.1, 5.1)
+        ax1.set_ylim(-0.1, 5.1)
         ax1.set_title("Log Z, current val: {:.3f}".format(y_best), fontsize=15)
         # ax1.colorbar()
         plt.tight_layout()
         # plt.show()
         plt.show(block=False)
-        plt.pause(3)
+        plt.pause(1)
         plt.close()
 
 

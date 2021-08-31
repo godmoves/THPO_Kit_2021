@@ -71,7 +71,7 @@ class GPyGP(BaseModel):
         X, y = self.trans(Xc, Xe, y)
 
         k1  = GPy.kern.Linear(X.shape[1],   ARD = False)
-        k2  = GPy.kern.Matern52(X.shape[1], ARD = True)
+        k2  = GPy.kern.Matern32(X.shape[1], ARD = True)
         k2.lengthscale = np.std(X, axis = 0)
         k2.variance    = 0.5
         k2.variance.set_prior(GPy.priors.Gamma(0.5, 1))

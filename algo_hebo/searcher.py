@@ -7,21 +7,19 @@
 # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 # PARTICULAR PURPOSE. See the MIT License for more details.
 
-import time
-import math
+# import time
+# import math
 from sklearn.preprocessing import power_transform
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.quasirandom import SobolEngine
-from pyDOE2 import lhs
+# from pyDOE2 import lhs
 from bo.design_space.design_space import DesignSpace
 from bo.models.model_factory import get_model
-from bo.acquisitions.acq import LCB, Mean, Sigma, MOMeanSigmaLCB, MACE
+from bo.acquisitions.acq import Mean, Sigma, MACE
 from bo.optimizers.evolution_optimizer import EvolutionOpt
-from sklearn.svm import SVC
-from sklearn.cluster import KMeans
 
 
 # Need to import the searcher abstract class, the following are essential
@@ -29,74 +27,6 @@ from thpo.abstract_searcher import AbstractSearcher
 from plot import Plot
 
 torch.set_num_threads(min(1, torch.get_num_threads()))
-
-
-class SpacePartition(object):
-    def get_split_model(self, X, kmeans_labels):
-        args = {
-            'kernel': 'poly',
-            'gamma': 'scale',
-            'C': 745.3227447730735,
-            'max_iter': 10**7,
-        }
-        split_model = SVC(**args)
-
-        split_model.fit(X, kmeans_labels)
-        split_model_predictions = split_model.predict(X)
-        split_model_matches = np.sum(split_model_predictions == kmeans_labels)
-        split_model_mismatches = np.sum(split_model_predictions != kmeans_labels)
-        print('Labels for the split model:', kmeans_labels)
-        print('Predictions of the split model:', split_model_predictions)
-        print(f'Split model matches {split_model_matches} and mismatches {split_model_mismatches}')
-        return split_model
-
-    def find_split(self, X, y):
-        max_margin = None
-        max_margin_labels = None
-        kmeans_resplits = 10
-        for _ in range(kmeans_resplits):
-            kmeans = KMeans(n_clusters=2).fit(y)
-            kmeans_labels = kmeans.labels_
-            if np.count_nonzero(kmeans_labels == 1) > 0 and np.count_nonzero(kmeans_labels == 0) > 0:
-                if np.mean(y[kmeans_labels == 1]) < np.mean(y[kmeans_labels == 0]):
-                    # Reverse labels if the entries with 1s have a lower mean value,
-                    # since 1s go to the left (larger) branch.
-                    kmeans_labels = 1 - kmeans_labels
-                margin = -(np.mean(y[kmeans_labels == 1]) - np.mean(y[kmeans_labels == 0]))
-                print('MARGIN is', margin, np.count_nonzero(kmeans_labels == 1),
-                      np.count_nonzero(kmeans_labels == 0))
-                if max_margin is None or margin > max_margin:
-                    max_margin = margin
-                    max_margin_labels = kmeans_labels
-        print('MAX MARGIN is', max_margin)
-        if max_margin_labels is None:
-            return None
-        else:
-            return self._get_split_model(X, max_margin_labels)
-
-    def build_tree(self, X, y, depth=0):
-        print('len(X) in self.build_tree is', len(X))
-        if depth == self.config['max_tree_depth']:
-            return []
-        split = self.find_split(X, y)
-        if split is None:
-            return []
-        in_region_points = split.predict(X)
-        left_subtree_size = np.count_nonzero(in_region_points == 1)
-        right_subtree_size = np.count_nonzero(in_region_points == 0)
-        print(f'{len(X)} points would be split into {left_subtree_size}/{right_subtree_size}.')
-        if left_subtree_size < self.n_init:
-            return []
-        idx = (in_region_points == 1)
-        splits = self.build_tree(X[idx], y[idx], depth + 1)
-        return [split] + splits
-
-    def get_in_node_region(self, points, splits):
-        in_region = np.ones(len(points))
-        for split in splits:
-            split_in_region = split.predict(points)
-            in_region *= split_in_region
-        return in_region
 
 
 class Searcher(AbstractSearcher):
@@ -112,7 +42,7 @@ class Searcher(AbstractSearcher):
         self.model_name = model_name
         self.sobol = SobolEngine(self.space.num_paras, scramble=False)
         self.plot = Plot()
-        self.n_init = 4 * n_suggestion
+        self.n_init = 5 * n_suggestion
 
     def filter(self, y: torch.Tensor) -> [bool]:
         if not (np.all(y.numpy() > 0) and (y.max() / y.min() > 20)):
@@ -129,6 +59,7 @@ class Searcher(AbstractSearcher):
         x = samp[:, :self.space.num_numeric]
         xe = samp[:, self.space.num_numeric:]
         df_samp = self.space.inverse_transform(x, xe)
+        df_samp = self.round_to_coords(df_samp)
         return df_samp
 
     def parse_space(self, api_config):
@@ -214,10 +145,7 @@ class Searcher(AbstractSearcher):
 
         if self.X.shape[0] < self.n_init:
             df_suggest = self.quasi_sample(n_suggestions)
-            df_suggest = self.round_to_coords(df_suggest)
-            x_guess = []
-            for i, row in df_suggest.iterrows():
-                x_guess.append(row.to_dict())
+            x_guess = df_suggest.to_dict("records")
         else:
             X, Xe = self.space.transform(self.X)
             try:
@@ -310,10 +238,9 @@ class Searcher(AbstractSearcher):
             self.plot.show(
                 suggestion_history=suggestion_history,
                 x_next=x_guess,
-                # trust_region=(tr_lb, tr_ub),
                 acq=acq,
                 rec=rec,
-                init_pop=opt.init_pop,
+                # init_pop=opt.init_pop,
             )
 
         return x_guess
@@ -325,7 +252,7 @@ class Searcher(AbstractSearcher):
         yy = y[valid_id].reshape(-1, 1)
         self.X = self.X.append(XX, ignore_index=True)
         self.y = np.vstack([self.y, yy])
-        print("Get -YY {}, best Y: {}".format(yy, max(self.y)))
+        print("Get -YY {}, best Y: {}".format(yy, -min(self.y.squeeze())))
 
     def check_unique(self, rec: pd.DataFrame) -> [bool]:
         return (~pd.concat([self.X, rec], axis=0).duplicated().tail(rec.shape[0]).values).tolist()
