@@ -112,6 +112,7 @@ class Searcher(AbstractSearcher):
         self.model_name = model_name
         self.sobol = SobolEngine(self.space.num_paras, scramble=False)
         self.plot = Plot()
+        self.n_init = 4 * n_suggestion
 
     def filter(self, y: torch.Tensor) -> [bool]:
         if not (np.all(y.numpy() > 0) and (y.max() / y.min() > 20)):
@@ -192,7 +193,7 @@ class Searcher(AbstractSearcher):
         lb = self.space.opt_lb.numpy().squeeze()
         return (x - lb) / (ub - lb)
 
-    def cal_rec_dist(self, rec: pd.DataFrame, best_x: pd.DataFrame):
+    def cal_rec_dist2(self, rec: pd.DataFrame, best_x: pd.DataFrame):
         rec = rec.to_numpy()
         best_x = best_x.to_numpy()[0]
 
@@ -209,16 +210,9 @@ class Searcher(AbstractSearcher):
             X = [s[0] for s in new_obs]
             # HEBO try to minimize, so we flip the sign
             y = [-s[1] for s in new_obs]
+            self.observe(X, y)
 
-            y = np.array(y).reshape(-1)
-            valid_id = np.where(np.isfinite(y))[0].tolist()
-            XX = [X[idx] for idx in valid_id]
-            yy = y[valid_id].reshape(-1, 1)
-            self.X = self.X.append(XX, ignore_index=True)
-            self.y = np.vstack([self.y, yy])
-            print("Get -YY {}, best Y: {}".format(yy, max([s[1] for s in suggestion_history])))
-
-        if self.X.shape[0] < 4 * n_suggestions:
+        if self.X.shape[0] < self.n_init:
             df_suggest = self.quasi_sample(n_suggestions)
             df_suggest = self.round_to_coords(df_suggest)
             x_guess = []
@@ -289,7 +283,7 @@ class Searcher(AbstractSearcher):
                 rand_rec = self.quasi_sample(n_suggestions - rec.shape[0])
                 rec = rec.append(rand_rec, ignore_index=True)
 
-            dist2 = self.cal_rec_dist(rec, best_x)
+            dist2 = self.cal_rec_dist2(rec, best_x)
             # print("Rec dist2", dist2)
             # Sample according to the distance form the current best points.
             select_id = np.random.choice(rec.shape[0], n_suggestions, replace=False, p=dist2).tolist()
@@ -312,7 +306,7 @@ class Searcher(AbstractSearcher):
             for idx in select_id:
                 x_guess.append(rec.iloc[idx].to_dict())
 
-        if len(suggestion_history) >= 4 * n_suggestions:
+        if len(suggestion_history) >= self.n_init:
             self.plot.show(
                 suggestion_history=suggestion_history,
                 x_next=x_guess,
@@ -323,6 +317,15 @@ class Searcher(AbstractSearcher):
             )
 
         return x_guess
+
+    def observe(self, X, y):
+        y = np.array(y).reshape(-1)
+        valid_id = np.where(np.isfinite(y))[0].tolist()
+        XX = [X[idx] for idx in valid_id]
+        yy = y[valid_id].reshape(-1, 1)
+        self.X = self.X.append(XX, ignore_index=True)
+        self.y = np.vstack([self.y, yy])
+        print("Get -YY {}, best Y: {}".format(yy, max(self.y)))
 
     def check_unique(self, rec: pd.DataFrame) -> [bool]:
         return (~pd.concat([self.X, rec], axis=0).duplicated().tail(rec.shape[0]).values).tolist()
